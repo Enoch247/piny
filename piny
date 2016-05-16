@@ -1,0 +1,145 @@
+#! /bin/sh -e
+
+# dependencies:
+# sudo apt-get install nodejs npm
+# sudo ln -s /usr/bin/nodejs /usr/local/bin/nod
+# sudo npm install -g yaml-to-json
+# NOTE: do not use "sudo npm install -g yaml2json"
+
+user_token=`cat $HOME/.pebble_timeline_token`
+timeline_url="https://timeline-api.getpebble.com/v1/user/pins"
+
+# defualt pin ID (as unique as possible)
+pin_id="T:`date '+%s_%N'`"
+
+# ------------------------------------------------------------------------------
+
+# take yaml as input and send to timeline API
+send_pin()
+{
+    input=`cat /dev/stdin`
+
+    # grap the pin ID from the yaml input stream
+    local pin_id=`echo "$input" | awk '/id/ {print $2}'`
+
+    echo "$input" | _send_pin $pin_id
+}
+
+# take yaml as input and pin ID as arg1 and send to timeline API
+_send_pin()
+{
+    local pin_id=$1
+
+    ## debug
+    #yaml2json /dev/stdin
+    #return 1
+
+    rsp=`yaml2json /dev/stdin | curl -s -X PUT "$timeline_url/$pin_id" \
+        --header "Content-Type: application/json" \
+        --header "X-User-Token: $user_token" \
+        -d @- `
+
+    # handle errors
+    if ! [ "$rsp" = "OK" ]
+    then
+        echo "$rsp"
+        return 1
+    fi
+}
+
+# ------------------------------------------------------------------------------
+
+# take pin ID as arg1 and send deletion request to timeline API
+delete_pin()
+{
+    local pin_id=$1
+
+    curl -s -X DELETE "$timeline_url/$pin_id" \
+        --header "X-User-Token: $user_token"
+}
+
+# ------------------------------------------------------------------------------
+
+piny()
+{
+    title="$*"
+    time=`date -Iseconds`
+    body=`cat /dev/stdin`
+
+    send_pin << pin.yml
+
+    id: $pin_id
+    time: "$time"
+    layout:
+        type: genericPin
+        title: "$title"
+        body: "$body"
+
+pin.yml
+}
+
+# ------------------------------------------------------------------------------
+
+piny_notify()
+{
+    title="$*"
+    time=`date -Iseconds`
+    body="`cat /dev/stdin`"
+
+    send_pin << pin.yml
+
+    id: $pin_id
+    time: "$time"
+    layout:
+        type: genericPin
+        title: "$title"
+        body: "$body"
+
+    createNotification:
+        layout:
+            type: genericNotification
+            title: "$title"
+            body: "$body"
+
+pin.yml
+}
+
+# ------------------------------------------------------------------------------
+
+piny_remind()
+{
+    time="$1"; shift
+    title="$*"
+
+    # if time is before now, assume user means that time tomorrow
+    if test $(date -d "$time" +%s) -lt $(date +%s)
+    then
+        time=$(date -Iseconds -d "$time + 1day")
+    else
+        time=$(date -Iseconds -d "$time")
+    fi
+
+    send_pin << pin.yml
+
+    id: $pin_id
+    time: "$time"
+    layout:
+        type: genericPin
+        title: "$title"
+        tinyIcon: system://images/NOTIFICATION_REMINDER
+
+    reminders:
+    -   time: "$time"
+        layout:
+            type: "genericReminder"
+            title: "$title"
+            tinyIcon: system://images/NOTIFICATION_REMINDER
+
+pin.yml
+}
+
+# ------------------------------------------------------------------------------
+
+# if called as "piny.foo, call internal function piny_foo()"
+`basename $0 | sed 's/\./_/'` "$@"
+
