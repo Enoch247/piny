@@ -1,14 +1,14 @@
-#About
+# About
 Bash scripts to interact with Pebble Timeline API
 
-#Install
+# Install
 
 ```shell
 cp -d piny* ~/bin/
 ```
 
-#Dependencies
-on Ubuntu 14.04LTS you may have to do
+# Dependencies
+on Ubuntu 14.04LTS, you may have to do the following:
 
 ```shell
 sudo apt-get install nodejs npm
